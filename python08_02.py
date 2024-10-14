@@ -22,13 +22,14 @@ def get_codons(sequence):
     """Divide a sequência em códons (trincas de nucleotídeos) no primeiro quadro de leitura."""
     return [sequence[i:i + 3] for i in range(0, len(sequence) - len(sequence) % 3, 3)]
 
-def print_codons(seqs):
-    """Imprime os códons para cada sequência."""
-    for gene_name, sequence in seqs.items():
-        codons = get_codons(sequence)
-        codons_str = ' '.join(codons)
-        print(f"{gene_name}-frame-1-codons")
-        print(codons_str)
+def write_codons_to_file(seqs, output_file):
+    """Escreve os códons para cada sequência em um arquivo."""
+    with open(output_file, 'w') as out_file:
+        for gene_name, sequence in seqs.items():
+            codons = get_codons(sequence)
+            codons_str = ' '.join(codons)
+            out_file.write(f"{gene_name}-frame-1-codons\n")
+            out_file.write(codons_str + "\n")
 
 # Solicita o caminho do arquivo fornecido pelo usuário
 file_path = input("Digite o caminho do arquivo multi-FASTA: ")
@@ -36,6 +37,10 @@ file_path = input("Digite o caminho do arquivo multi-FASTA: ")
 # Lendo e processando o arquivo
 sequences = read_fasta(file_path)
 
-# Imprimindo os códons
-print_codons(sequences)
+# Nome do arquivo de saída
+output_file = 'Python_08.codons-frame-1.nt'
 
+# Escrevendo os códons no arquivo
+write_codons_to_file(sequences, output_file)
+
+print(f"Códons foram escritos em {output_file}.")
