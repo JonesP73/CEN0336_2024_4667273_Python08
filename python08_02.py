@@ -1,46 +1,23 @@
-#!/usr/bin/env python3
+from Bio import SeqIO
 
-def read_fasta(file_path):
-    """Lê o arquivo multi-FASTA e retorna um dicionário com sequências."""
-    seqs = {}
-    gene_name = ""
+# Solicita o nome do arquivo FASTA ao usuário
+input_file = input("Digite o nome do arquivo FASTA (ex: Python_08.fasta): ")
 
-    with open(file_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith('>'):
-                # Nome da sequência
-                gene_name = line[1:]  # Remove o caractere '>'
-                seqs[gene_name] = ""
-            else:
-                # Acumula as sequências
-                seqs[gene_name] += line
+# Define o nome do arquivo de saída
+output_file = "Python_08.codons-frame-1.nt"
 
-    return seqs
+# Abre o arquivo de saída para escrita
+with open(output_file, "w") as outfile:
+    # Itera por cada sequência no arquivo FASTA
+    for record in SeqIO.parse(input_file, "fasta"):
+        # Obtém o ID da sequência
+        sequence_id = record.id
+        
+        # Divide a sequência em códons no primeiro quadro de leitura
+        codons = [str(record.seq[i:i+3]) for i in range(0, len(record.seq), 3) if len(record.seq[i:i+3]) == 3]
+        
+        # Escreve o cabeçalho e os códons no arquivo de saída
+        outfile.write(f">{sequence_id}-frame-1-codons\n")
+        outfile.write(" ".join(codons) + "\n")
 
-def get_codons(sequence):
-    """Divide a sequência em códons (trincas de nucleotídeos) no primeiro quadro de leitura."""
-    return [sequence[i:i + 3] for i in range(0, len(sequence) - len(sequence) % 3, 3)]
-
-def write_codons_to_file(seqs, output_file):
-    """Escreve os códons para cada sequência em um arquivo."""
-    with open(output_file, 'w') as out_file:
-        for gene_name, sequence in seqs.items():
-            codons = get_codons(sequence)
-            codons_str = ' '.join(codons)
-            out_file.write(f"{gene_name}-frame-1-codons\n")
-            out_file.write(codons_str + "\n")
-
-# Solicita o caminho do arquivo fornecido pelo usuário
-file_path = input("Digite o caminho do arquivo multi-FASTA: ")
-
-# Lendo e processando o arquivo
-sequences = read_fasta(file_path)
-
-# Nome do arquivo de saída
-output_file = 'Python_08.codons-frame-1.nt'
-
-# Escrevendo os códons no arquivo
-write_codons_to_file(sequences, output_file)
-
-print(f"Códons foram escritos em {output_file}.")
+print(f"Arquivo '{output_file}' criado com sucesso!")
