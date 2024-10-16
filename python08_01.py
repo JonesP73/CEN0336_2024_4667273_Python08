@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 def read_fasta(file_path):
     # Dicionário para armazenar as sequências
     seqs = {}
