@@ -1,8 +1,79 @@
-from Bio import SeqIO
-from Bio.Seq import Seq
+import re
+import sys
+import os
 
-# Tabela de tradução fornecida
-tabela_de_traducao = {
+# Dicionário para armazenar os identificadores como chave e as sequências como valor
+seqs = {}
+
+# Verifica se um arquivo foi fornecido como argumento
+if len(sys.argv) < 2:
+    print("Nenhum arquivo especificado.")
+    sys.exit(1)
+
+file = sys.argv[1]
+
+# Verifica se o arquivo existe
+if not os.path.exists(file):
+    print("Arquivo não encontrado.")
+    sys.exit(1)
+
+# Abrindo o arquivo e processando linha por linha
+with open(file) as f:
+    identificador = ""
+    for linha in f:
+        linha = linha.rstrip()  # Remove espaços e quebras de linha extras
+        if linha.startswith(">"):  # Verifica se é um cabeçalho
+            # Se já existe um identificador, cria a sequência reversa complementar
+            if identificador:
+                seqs[identificador]["reverse_seq"] = seqs[identificador]["seq"][::-1].translate(str.maketrans("ATCG", "TAGC"))
+            
+            # Extrai o identificador do cabeçalho
+            id = re.search(r'>(\S+)(\s.+?)', linha)
+            identificador = id.group(1)
+            # Cria um dicionário para armazenar as informações da sequência
+            seqs[identificador] = {
+                "seq": "", 
+                "frame_+1": [], "frame_+2": [], "frame_+3": [], 
+                "reverse_seq": "", 
+                "frame_-1": [], "frame_-2": [], "frame_-3": []
+            }
+        else:
+            # Adiciona a sequência de bases ao dicionário
+            seqs[identificador]["seq"] += linha.upper()
+
+    # Cria a sequência reversa complementar para o último identificador
+    seqs[identificador]["reverse_seq"] = seqs[identificador]["seq"][::-1].translate(str.maketrans("ATCG", "TAGC"))
+
+# Escreve as sequências em 6 frames em um arquivo
+with open("Python_08.codons-6frames.nt", "w") as f:
+    for id in seqs:
+        saida = ""
+        saida_reversa = ""
+        for i in range(3):  # Percorre os 3 frames de leitura
+            frame = f"frame_+{i+1}"
+            for match in re.finditer(r"(.{3})", seqs[id]["seq"][i:]):
+                seqs[id][frame].append(match.group(1))
+
+            if len(seqs[id][frame][-1]) != 3:
+                seqs[id][frame].pop()
+
+            # Frames reversos
+            frame_reverso = f"frame_-{i+1}"
+            for match in re.finditer(r"(.{3})", seqs[id]["reverse_seq"][i:]):
+                seqs[id][frame_reverso].append(match.group(1))
+
+            if len(seqs[id][frame_reverso][-1]) != 3:
+                seqs[id][frame_reverso].pop()
+
+            # Formata as saídas para salvar
+            saida += f">{id}-frame-{i+1}-codons\n{' '.join(seqs[id][frame])}\n"
+            saida_reversa += f">{id}-frame--{i+1}-codons\n{' '.join(seqs[id][frame_reverso])}\n"
+
+        f.write(saida)
+        f.write(saida_reversa)
+
+# Tabela de tradução para aminoácidos
+translation_table = {
     'GCT':'A', 'GCC':'A', 'GCA':'A', 'GCG':'A',
     'CGT':'R', 'CGC':'R', 'CGA':'R', 'CGG':'R', 'AGA':'R', 'AGG':'R',
     'AAT':'N', 'AAC':'N',
@@ -26,90 +97,48 @@ tabela_de_traducao = {
     'TAA':'*', 'TGA':'*', 'TAG':'*'
 }
 
-def traduzir_codons(codons):
-    return [tabela_de_traducao.get(codon, 'X') for codon in codons]
+# Traduz as sequências de nucleotídeos para proteínas e salva os resultados
+with open("Python_08.translated.aa", "w") as f:
+    with open("Python_08.translated-longest.aa", "w") as longest_f:
+        for id in seqs:
+            maior_peptideo = ""
+            tamanho_maior_peptideo = 0
+            for i in range(3):
+                frame = f"frame_+{i+1}"
+                protein_frame = f"protein_frame_+{i+1}"
+                seqs[id][protein_frame] = ""
 
-def encontrar_peptideo_mais_longo(amino_acids):
-    longest_peptide = ""
-    current_peptide = []
+                for codon in seqs[id][frame]:
+                    if codon not in translation_table:
+                        seqs[id][protein_frame] += "_"
+                    else:
+                        seqs[id][protein_frame] += translation_table[codon]
 
-    for aa in amino_acids:
-        if aa == 'M':  # Início de um novo peptídeo
-            current_peptide = ['M']
-        elif aa == '*':  # Fim do peptídeo
-            if len(current_peptide) > len(longest_peptide):
-                longest_peptide = "".join(current_peptide)
-            current_peptide = []
-        elif current_peptide:
-            current_peptide.append(aa)
+                peptideos = re.findall(r"(M[A-Z]+?)\*", seqs[id][protein_frame])
+                maior_peptideo_frame = max(peptideos, key=len) if peptideos else ""
 
-    # Verifica se o peptídeo final é o mais longo
-    if len(current_peptide) > len(longest_peptide):
-        longest_peptide = "".join(current_peptide)
+                if len(maior_peptideo_frame) > tamanho_maior_peptideo:
+                    tamanho_maior_peptideo = len(maior_peptideo_frame)
+                    maior_peptideo = maior_peptideo_frame
 
-    return longest_peptide
+                # Faz a mesma coisa para os frames negativos
+                frame_reverso = f"frame_-{i+1}"
+                protein_frame_reverso = f"protein_frame_-{i+1}"
+                seqs[id][protein_frame_reverso] = ""
 
-# Solicita o nome do arquivo FASTA ao usuário
-input_file = input("Digite o nome do arquivo FASTA (ex: Python_08.fasta): ")
+                for codon in seqs[id][frame_reverso]:
+                    if codon not in translation_table:
+                        seqs[id][protein_frame_reverso] += "_"
+                    else:
+                        seqs[id][protein_frame_reverso] += translation_table[codon]
 
-# Define os nomes dos arquivos de saída
-output_codons_file = "Python_08.codons-6frames.nt"
-output_translation_file = "Python_08.translated.aa"
-output_longest_peptide_file = "Python_08.translated-longest.aa"
+                peptideos_reversos = re.findall(r"(M[A-Z]+?)\*", seqs[id][protein_frame_reverso])
+                maior_peptideo_frame_reverso = max(peptideos_reversos, key=len) if peptideos_reversos else ""
 
-# Abre os arquivos de saída para escrita
-with open(output_codons_file, "w") as codons_outfile, \
-     open(output_translation_file, "w") as translation_outfile, \
-     open(output_longest_peptide_file, "w") as longest_peptide_outfile:
-    
-    # Itera por cada sequência no arquivo FASTA
-    for record in SeqIO.parse(input_file, "fasta"):
-        sequence_id = record.id
-        sequence = record.seq
-        all_peptides = []
+                if len(maior_peptideo_frame_reverso) > tamanho_maior_peptideo:
+                    tamanho_maior_peptideo = len(maior_peptideo_frame_reverso)
+                    maior_peptideo = maior_peptideo_frame_reverso
 
-        # Processa os três quadros de leitura da sequência original
-        for frame in range(3):
-            codons = [str(sequence[i:i+3]) for i in range(frame, len(sequence), 3) if len(sequence[i:i+3]) == 3]
-            amino_acids = traduzir_codons(codons)
-            
-            # Escreve no arquivo de códons
-            codons_outfile.write(f">{sequence_id}-frame-{frame+1}-codons\n")
-            codons_outfile.write(" ".join(codons) + "\n")
-            
-            # Escreve no arquivo de tradução
-            translation_outfile.write(f">{sequence_id}-frame-{frame+1}-aa\n")
-            translation_outfile.write("".join(amino_acids) + "\n")
-            
-            # Adiciona peptídeo à lista de todos os peptídeos para análise
-            all_peptides.append("".join(amino_acids))
-
-        # Processa os três quadros de leitura do complemento reverso
-        reverse_complement = sequence.reverse_complement()
-        for frame in range(3):
-            codons = [str(reverse_complement[i:i+3]) for i in range(frame, len(reverse_complement), 3) if len(reverse_complement[i:i+3]) == 3]
-            amino_acids = traduzir_codons(codons)
-            
-            # Escreve no arquivo de códons
-            codons_outfile.write(f">{sequence_id}-reverse-frame-{frame+1}-codons\n")
-            codons_outfile.write(" ".join(codons) + "\n")
-            
-            # Escreve no arquivo de tradução
-            translation_outfile.write(f">{sequence_id}-reverse-frame-{frame+1}-aa\n")
-            translation_outfile.write("".join(amino_acids) + "\n")
-            
-            # Adiciona peptídeo à lista de todos os peptídeos para análise
-            all_peptides.append("".join(amino_acids))
-
-        # Identifica o peptídeo mais longo entre todos os seis quadros de leitura
-        longest_peptide = ""
-        for peptide in all_peptides:
-            candidate = encontrar_peptideo_mais_longo(peptide)
-            if len(candidate) > len(longest_peptide):
-                longest_peptide = candidate
-
-        # Escreve o peptídeo mais longo no arquivo de saída
-        longest_peptide_outfile.write(f">{sequence_id}-longest-peptide\n")
-        longest_peptide_outfile.write(longest_peptide + "\n")
-
-print(f"Arquivos '{output_codons_file}', '{output_translation_file}', e '{output_longest_peptide_file}' criados com sucesso!")
+            longest_f.write(f">{id}\n{maior_peptideo}\n")
+            f.write("".join([f">{id}-frame-{i}-protein\n{seqs[id][f'protein_frame_+{i}']}\n" for i in range(1, 4)]))
+            f.write("".join([f">{id}-frame--{i}-protein\n{seqs[id][f'protein_frame_-{i}']}\n" for i in range(1, 4)]))

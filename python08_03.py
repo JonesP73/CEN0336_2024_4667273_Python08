@@ -1,25 +1,51 @@
-from Bio import SeqIO
+import re  # Importa o módulo para trabalhar com expressões regulares
+import sys  # Importa o módulo para lidar com argumentos da linha de comando
+import os   # Importa o módulo para trabalhar com arquivos
 
-# Solicita o nome do arquivo FASTA ao usuário
-input_file = input("Digite o nome do arquivo FASTA (ex: Python_08.fasta): ")
+# Dicionário para armazenar identificadores e suas sequências
+sequencias = {}
 
-# Define o nome do arquivo de saída
-output_file = "Python_08.codons-3frames.nt"
+# Verifica se um arquivo foi passado como argumento
+if len(sys.argv) < 2:
+    print("Nenhum arquivo especificado")
+    sys.exit(1)  # Encerra o programa se não houver arquivo
 
-# Abre o arquivo de saída para escrita
-with open(output_file, "w") as outfile:
-    # Itera por cada sequência no arquivo FASTA
-    for record in SeqIO.parse(input_file, "fasta"):
-        # Obtém o ID da sequência
-        sequence_id = record.id
-        
-        # Itera pelos três primeiros quadros de leitura
-        for frame in range(3):
-            # Divide a sequência em códons no quadro de leitura atual
-            codons = [str(record.seq[i:i+3]) for i in range(frame, len(record.seq), 3) if len(record.seq[i:i+3]) == 3]
-            
-            # Escreve o cabeçalho e os códons no arquivo de saída
-            outfile.write(f">{sequence_id}-frame-{frame+1}-codons\n")
-            outfile.write(" ".join(codons) + "\n")
+# Pega o nome do arquivo que foi passado como argumento
+arquivo = sys.argv[1]
 
-print(f"Arquivo '{output_file}' criado com sucesso!")
+# Verifica se o arquivo existe
+if not os.path.exists(arquivo):
+    print("Arquivo não encontrado")
+    sys.exit(1)  # Encerra o programa se o arquivo não existir
+
+# Abre o arquivo e lê cada linha
+with open(arquivo) as f:
+    for linha in f:
+        linha = linha.rstrip()  # Remove espaços e quebras de linha no final
+
+        # Verifica se a linha é um cabeçalho (começa com ">")
+        if linha.startswith(">"):
+            id = re.search(r'>(\S+)(\s.+?)', linha)  # Busca o identificador
+            identificador = id.group(1)  # Pega o identificador encontrado
+            # Cria um dicionário para armazenar a sequência e os três frames
+            sequencias[identificador] = {"seq": "", "frame_+1": [], "frame_+2": [], "frame_+3": []}
+        else:
+            # Adiciona a sequência convertida para maiúsculas ao identificador atual
+            sequencias[identificador]["seq"] += linha.upper()
+
+# Abre o arquivo de saída para escrever os resultados
+with open("Python_08.codons-3frames.nt", "w") as f:
+    for id in sequencias:  # Para cada identificador no dicionário
+        # Itera sobre os três frames (0, 1 e 2)
+        for i in range(3):
+            frame = "frame_+" + str(i + 1)
+            # Busca grupos de 3 bases na sequência a partir do índice do frame
+            for match in re.finditer(r"(.{3})", sequencias[id]["seq"][i:]):
+                sequencias[id][frame].append(match.group(1))  # Adiciona o grupo de 3 ao frame
+
+            # Remove o último grupo se ele não tiver 3 bases
+            if len(sequencias[id][frame][-1]) != 3:
+                sequencias[id][frame].pop()
+
+            # Escreve os resultados formatados no arquivo de saída
+            f.write(f"{id}-frame-{i+1}-codons\n{' '.join(sequencias[id][frame])}\n")

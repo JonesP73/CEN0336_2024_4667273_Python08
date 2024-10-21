@@ -1,32 +1,42 @@
-def read_fasta(file_path):
-    # Dicionário para armazenar as sequências
-    seqs = {}
-    gene_name = ""
+import re  # Importa a biblioteca para usar expressões regulares
+import sys  # Importa a biblioteca para lidar com argumentos passados pelo terminal
+import os   # Importa a biblioteca para trabalhar com arquivos e caminhos
 
-    with open(file_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith('>'):
-                # Linha com nome da sequência
-                gene_name = line[1:]  # Remove o caractere '>'
-                seqs[gene_name] = {'A': 0, 'T': 0, 'G': 0, 'C': 0}
-            else:
-                # Linha com a sequência (acumulando contagem de nucleotídeos)
-                for nucleotide in line:
-                    if nucleotide in seqs[gene_name]:
-                        seqs[gene_name][nucleotide] += 1
+# Dicionário para armazenar as sequências, onde a chave é o identificador e o valor são as bases A, T, C, G
+sequencias = {}
 
-    return seqs
+# Verifica se foi passado um arquivo como argumento
+if len(sys.argv) < 2:
+    print("Nenhum arquivo especificado")
+    sys.exit(1)  # Encerra o programa
 
-def print_nucleotide_composition(seqs):
-    for gene_name, counts in seqs.items():
-        print(f"{gene_name}\t{counts['A']}\t{counts['T']}\t{counts['G']}\t{counts['C']}")  # Fixed syntax error: Added closing bracket
+# Pega o nome do arquivo que foi passado como argumento
+arquivo = sys.argv[1]
 
-# Solicita o caminho do arquivo fornecido pelo usuário
-file_path = input("Digite o caminho do arquivo multi-FASTA: ")
+# Verifica se o arquivo existe
+if not os.path.exists(arquivo):
+    print("Arquivo não encontrado")
+    sys.exit(1)  # Encerra o programa
 
-# Lendo e processando o arquivo
-sequences = read_fasta(file_path)
+# Abre o arquivo e lê linha por linha
+with open(arquivo) as f:
+    for linha in f:
+        # Remove espaços em branco no final da linha e converte tudo para maiúsculas
+        linha = linha.rstrip().upper()
+        
+        # Se a linha começar com ">", é um cabeçalho com o identificador
+        if linha.startswith(">"):
+            id = re.search(r'>(\S+)(\s.+?)', linha)  # Busca o identificador na linha
+            identificador = id.group(1)  # Extrai o identificador
+            # Cria um dicionário para contar as bases (A, T, C, G) para esse identificador
+            sequencias[identificador] = {"A": 0, "T": 0, "C": 0, "G": 0}
+        else:
+            # Conta quantas vezes cada base aparece e atualiza no dicionário
+            sequencias[identificador]["A"] += linha.count("A")
+            sequencias[identificador]["T"] += linha.count("T")
+            sequencias[identificador]["C"] += linha.count("C")
+            sequencias[identificador]["G"] += linha.count("G")
 
-# Imprimindo a composição de nucleotídeos
-print_nucleotide_composition(sequences)
+# Exibe os resultados
+for id in sequencias:
+    print(f"{id}\tA_{sequencias[id]['A']}\tT_{sequencias[id]['T']}\tC_{sequencias[id]['C']}\tG_{sequencias[id]['G']}")

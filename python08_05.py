@@ -1,8 +1,74 @@
-from Bio import SeqIO
-from Bio.Seq import Seq
+import re
+import sys
+import os
 
-# Tabela de tradução fornecida
-tabela_de_traducao = {
+# Dicionário para armazenar as sequências e informações associadas a cada identificador
+seqs = {}
+
+# Verifica se um arquivo foi passado como argumento
+if len(sys.argv) < 2:
+    print("Nenhum arquivo especificado")
+    sys.exit(1)
+
+arquivo = sys.argv[1]
+
+# Verifica se o arquivo existe
+if not os.path.exists(arquivo):
+    print("Arquivo não encontrado")
+    sys.exit(1)
+
+# Lê o arquivo e processa as sequências
+with open(arquivo) as f:
+    identificador = ""
+    for linha in f:
+        linha = linha.rstrip()  # Remove espaços e quebras de linha
+        if linha.startswith(">"):  # Verifica se é um cabeçalho
+            if identificador:
+                # Cria a sequência complementar reversa
+                seqs[identificador]["rev_comp_seq"] = seqs[identificador]["seq"][::-1].translate(str.maketrans("ATCG", "TAGC"))
+            
+            # Extrai o identificador
+            id_match = re.search(r'>(\S+)', linha)
+            identificador = id_match.group(1)
+            # Cria um dicionário para cada identificador
+            seqs[identificador] = {
+                "seq": "",
+                "frame_+1": [], "frame_+2": [], "frame_+3": [],
+                "rev_comp_seq": "",
+                "frame_-1": [], "frame_-2": [], "frame_-3": []
+            }
+        else:
+            # Adiciona a sequência ao dicionário e coloca em maiúsculas
+            seqs[identificador]["seq"] += linha.upper()
+
+    # Cria a sequência complementar reversa para o último identificador
+    seqs[identificador]["rev_comp_seq"] = seqs[identificador]["seq"][::-1].translate(str.maketrans("ATCG", "TAGC"))
+
+# Abre o arquivo para salvar os códons em 6 frames
+with open("Python_08.codons-6frames.nt", "w") as f:
+    for id in seqs:
+        output = ""
+        output_rev = ""
+        for i in range(3):
+            # Frame positivo
+            frame = f"frame_+{i+1}"
+            for match in re.finditer(r"(.{3})", seqs[id]["seq"][i:]):
+                seqs[id][frame].append(match.group(1))
+
+            # Frame negativo
+            frame_rev = f"frame_-{i+1}"
+            for match in re.finditer(r"(.{3})", seqs[id]["rev_comp_seq"][i:]):
+                seqs[id][frame_rev].append(match.group(1))
+
+        # Escreve os resultados no arquivo
+        for i in range(3):
+            output += f"{id}-frame-{i+1}-codons\n{' '.join(seqs[id][f'frame_+{i+1}'])}\n"
+            output_rev += f"{id}-frame--{i+1}-codons\n{' '.join(seqs[id][f'frame_-{i+1}'])}\n"
+        f.write(output)
+        f.write(output_rev)
+
+# Tabela de tradução de códons para aminoácidos
+tabela_traducao = {
     'GCT':'A', 'GCC':'A', 'GCA':'A', 'GCG':'A',
     'CGT':'R', 'CGC':'R', 'CGA':'R', 'CGG':'R', 'AGA':'R', 'AGG':'R',
     'AAT':'N', 'AAC':'N',
@@ -26,50 +92,23 @@ tabela_de_traducao = {
     'TAA':'*', 'TGA':'*', 'TAG':'*'
 }
 
-# Solicita o nome do arquivo FASTA ao usuário
-input_file = input("Digite o nome do arquivo FASTA (ex: Python_08.fasta): ")
+# Abre o arquivo para salvar as traduções em proteína
+with open("Python_08.translated.aa", "w") as f:
+    for id in seqs:
+        for i in range(3):
+            frame = f"frame_+{i+1}"
+            protein_frame = f"protein_frame_+{i+1}"
+            seqs[id][protein_frame] = "".join(
+                tabela_traducao.get(codon, "_") for codon in seqs[id][frame]
+            )
 
-# Define os nomes dos arquivos de saída
-output_codons_file = "Python_08.codons-6frames.nt"
-output_translation_file = "Python_08.translated.aa"
+            frame_rev = f"frame_-{i+1}"
+            protein_frame_rev = f"protein_frame_-{i+1}"
+            seqs[id][protein_frame_rev] = "".join(
+                tabela_traducao.get(codon, "_") for codon in seqs[id][frame_rev]
+            )
 
-# Abre os arquivos de saída para escrita
-with open(output_codons_file, "w") as codons_outfile, open(output_translation_file, "w") as translation_outfile:
-    # Itera por cada sequência no arquivo FASTA
-    for record in SeqIO.parse(input_file, "fasta"):
-        # Obtém o ID e a sequência da sequência
-        sequence_id = record.id
-        sequence = record.seq
-        
-        # Processa os três quadros de leitura da sequência original
-        for frame in range(3):
-            # Divide a sequência em códons no quadro de leitura atual
-            codons = [str(sequence[i:i+3]) for i in range(frame, len(sequence), 3) if len(sequence[i:i+3]) == 3]
-            
-            # Escreve o cabeçalho e os códons no arquivo de códons
-            codons_outfile.write(f">{sequence_id}-frame-{frame+1}-codons\n")
-            codons_outfile.write(" ".join(codons) + "\n")
-            
-            # Traduz os códons em aminoácidos
-            amino_acids = [tabela_de_traducao.get(codon, 'X') for codon in codons]
-            translation_outfile.write(f">{sequence_id}-frame-{frame+1}-aa\n")
-            translation_outfile.write("".join(amino_acids) + "\n")
-        
-        # Calcula o complemento reverso da sequência
-        reverse_complement = sequence.reverse_complement()
-        
-        # Processa os três quadros de leitura do complemento reverso
-        for frame in range(3):
-            # Divide a sequência em códons no quadro de leitura atual
-            codons = [str(reverse_complement[i:i+3]) for i in range(frame, len(reverse_complement), 3) if len(reverse_complement[i:i+3]) == 3]
-            
-            # Escreve o cabeçalho e os códons no arquivo de códons
-            codons_outfile.write(f">{sequence_id}-reverse-frame-{frame+1}-codons\n")
-            codons_outfile.write(" ".join(codons) + "\n")
-            
-            # Traduz os códons em aminoácidos
-            amino_acids = [tabela_de_traducao.get(codon, 'X') for codon in codons]
-            translation_outfile.write(f">{sequence_id}-reverse-frame-{frame+1}-aa\n")
-            translation_outfile.write("".join(amino_acids) + "\n")
-
-print(f"Arquivos '{output_codons_file}' e '{output_translation_file}' criados com sucesso!")
+        # Escreve as traduções no arquivo
+        for i in range(1, 4):
+            f.write(f">{id}-frame-{i}-protein\n{seqs[id][f'protein_frame_+{i}']}\n")
+            f.write(f">{id}-frame--{i}-protein\n{seqs[id][f'protein_frame_-{i}']}\n")
